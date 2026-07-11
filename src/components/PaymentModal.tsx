@@ -94,7 +94,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
 
       setStatus('verifying');
 
-      // FALLBACK FIXED: Uses the key from Supabase if available, otherwise securely checks Render environment variables
+      // FALLBACK FIX: Uses the key from Supabase if available, otherwise securely uses Render environment variables
       const finalKeyId = keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
 
       if (!finalKeyId) {
@@ -165,7 +165,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
         setStatus('error');
       });
       
-      // RESTORED: This line launches the browser popup window
+      // RESTORED: This line launches the browser popup checkout window
       rzp.open();
 
     } catch (err) {
