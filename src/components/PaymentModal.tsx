@@ -196,7 +196,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
       setEmailSent(true);
     } catch (err) {
       setEmailError(err instanceof Error ? err.message : 'Failed to send email. Please try downloading instead.');
-    } finaly {
+    } finally {
       setEmailSending(false);
     }
   };
