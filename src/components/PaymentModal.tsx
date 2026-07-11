@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Download, Lock, Check, Loader2, CreditCard, Shield, User, Mail, Phone } from 'lucide-react';
+import { X, Download, Lock, Check, Loader2, CreditCard, Shield, User, Mail, Phone, Send } from 'lucide-react';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -28,6 +28,9 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
   const [error, setError] = useState('');
   const [customer, setCustomer] = useState<CustomerDetails>({ name: '', email: '', phone: '' });
   const [touched, setTouched] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
   if (!isOpen) return null;
 
@@ -175,17 +178,96 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
               <Check className="w-8 h-8 text-emerald-600" strokeWidth={2.5} />
             </div>
             <h2 className="text-2xl font-bold text-stone-900 mb-2">Payment Successful!</h2>
-            <p className="text-stone-600 mb-6">Your resume is now unlocked for download.</p>
-            <button
-              onClick={() => {
-                onClose();
-                setTimeout(() => window.print(), 300);
-              }}
-              className="px-6 py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors flex items-center gap-2 mx-auto"
-            >
-              <Download className="w-5 h-5" />
-              Download PDF Now
-            </button>
+            <p className="text-stone-600 mb-6">Your resume is now unlocked. How would you like to receive it?</p>
+
+            {emailSent ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+                <div className="flex items-center justify-center gap-2 text-emerald-700 font-semibold text-sm">
+                  <Check className="w-5 h-5" strokeWidth={2.5} />
+                  Email sent to {customer.email}
+                </div>
+                <p className="text-xs text-emerald-600 mt-1.5">Check your inbox (and spam folder just in case).</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    onClose();
+                    setTimeout(() => window.print(), 300);
+                  }}
+                  className="w-full py-3.5 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Download PDF Now
+                </button>
+
+                <div className="flex items-center gap-3 my-2">
+                  <div className="flex-1 h-px bg-stone-200" />
+                  <span className="text-xs text-stone-400 font-medium">OR</span>
+                  <div className="flex-1 h-px bg-stone-200" />
+                </div>
+
+                {emailError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 text-left">
+                    {emailError}
+                  </div>
+                )}
+
+                <button
+                  onClick={async () => {
+                    setEmailSending(true);
+                    setEmailError('');
+                    try {
+                      const emailUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-resume-email`;
+                      const resp = await fetch(emailUrl, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                        },
+                        body: JSON.stringify({
+                          resumeId,
+                          toEmail: customer.email,
+                          toName: customer.name,
+                        }),
+                      });
+                      if (!resp.ok) {
+                        const body = await resp.json().catch(() => ({}));
+                        throw new Error(body.error || 'Failed to send email');
+                      }
+                      setEmailSent(true);
+                    } catch (err) {
+                      setEmailError(err instanceof Error ? err.message : 'Failed to send email. Please try downloading instead.');
+                    } finally {
+                      setEmailSending(false);
+                    }
+                  }}
+                  disabled={emailSending}
+                  className="w-full py-3.5 bg-white text-stone-900 font-semibold rounded-xl border border-stone-300 hover:border-stone-400 hover:bg-stone-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {emailSending ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Sending email...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" />
+                      Email Resume to {customer.email}
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {!emailSent && (
+              <button
+                onClick={onClose}
+                className="mt-4 text-sm text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                Close
+              </button>
+            )}
           </div>
         ) : (
           <>
