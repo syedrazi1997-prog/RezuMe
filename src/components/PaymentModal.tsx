@@ -63,13 +63,13 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
     setError('');
 
     try {
-      // 1. Keeps your Supabase order creation fully intact
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-razorpay-order`;
-      const response = await fetch(apiUrl, {
+      const backendBaseUrl = import.meta.env.VITE_BACKEND_URL || '';
+      
+      // 1. Create Order via Render Backend Node server
+      const response = await fetch(`${backendBaseUrl}/api/payments/create-order`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ resumeId, customer }),
       });
@@ -79,7 +79,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
         throw new Error(body.error || `Payment service unavailable (${response.status})`);
       }
 
-      const { orderId, amount, currency, keyId, alreadyPaid } = await response.json();
+      const { orderId, amount, currency, alreadyPaid } = await response.json();
 
       if (alreadyPaid) {
         setStatus('success');
@@ -94,16 +94,14 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
 
       setStatus('verifying');
 
-      // FALLBACK FIX: Uses the key from Supabase if available, otherwise securely uses Render environment variables
-      const finalKeyId = keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
-
+      const finalKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID;
       if (!finalKeyId) {
-        throw new Error('Payment system is not yet configured. Please add your Razorpay keys in the project settings.');
+        throw new Error('Payment system is not yet configured. Please add VITE_RAZORPAY_KEY_ID to your environment.');
       }
 
       const options = {
         key: finalKeyId, 
-        amount: amount || 100, // Fallback to 100 paise (₹1) if Supabase sends back nothing
+        amount: amount || 100, 
         currency: currency || 'INR',
         name: 'RezuMe',
         description: 'Resume PDF Download',
@@ -121,13 +119,11 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
         },
         handler: async (response: any) => {
           try {
-            // 2. Keeps your Supabase verification logic intact
-            const verifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-razorpay-payment`;
-            const verifyResp = await fetch(verifyUrl, {
+            // 2. Verify payment status via Render Backend Node server
+            const verifyResp = await fetch(`${backendBaseUrl}/api/payments/verify-payment`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
               },
               body: JSON.stringify({
                 resumeId,
@@ -165,12 +161,43 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
         setStatus('error');
       });
       
-      // RESTORED: This line launches the browser popup checkout window
       rzp.open();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed. Please try again.');
       setStatus('error');
+    }
+  };
+
+  const handleSendEmail = async () => {
+    setEmailSending(true);
+    setEmailError('');
+    try {
+      const backendBaseUrl = import.meta.env.VITE_BACKEND_URL || '';
+      
+      // 3. Send out transactional summary email via Render Backend Node server
+      const resp = await fetch(`${backendBaseUrl}/api/payments/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resumeId,
+          toEmail: customer.email,
+          toName: customer.name,
+        }),
+      });
+
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to send email');
+      }
+
+      setEmailSent(true);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to send email. Please try downloading instead.');
+    } finaly {
+      setEmailSending(false);
     }
   };
 
@@ -224,37 +251,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                 )}
 
                 <button 
-                  onClick={async () => {
-                    setEmailSending(true);
-                    setEmailError('');
-                    try {
-                      // 3. Keeps your Supabase email function intact
-                      const emailUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-resume-email`;
-                      const resp = await fetch(emailUrl, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                        },
-                        body: JSON.stringify({
-                          resumeId,
-                          toEmail: customer.email,
-                          toName: customer.name,
-                        }),
-                      });
-
-                      if (!resp.ok) {
-                        const body = await resp.json().catch(() => ({}));
-                        throw new Error(body.error || 'Failed to send email');
-                      }
-
-                      setEmailSent(true);
-                    } catch (err) {
-                      setEmailError(err instanceof Error ? err.message : 'Failed to send email. Please try downloading instead.');
-                    } finally {
-                      setEmailSending(false);
-                    }
-                  }} 
+                  onClick={handleSendEmail} 
                   disabled={emailSending} 
                   className="w-full py-3.5 bg-white text-stone-900 font-semibold rounded-xl border border-stone-300 hover:border-stone-400 hover:bg-stone-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
