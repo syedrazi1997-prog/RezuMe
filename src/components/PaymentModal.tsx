@@ -20,8 +20,7 @@ declare global {
   }
 }
 
-const inputClass =
-  'w-full pl-10 pr-3 py-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-all';
+const inputClass = 'w-full pl-10 pr-3 py-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/10 transition-all';
 
 export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: PaymentModalProps) {
   const [status, setStatus] = useState<'idle' | 'processing' | 'verifying' | 'success' | 'error'>('idle');
@@ -39,6 +38,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
     email: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email) ? 'Please enter a valid email' : '',
     phone: customer.phone.replace(/\D/g, '').length < 10 ? 'Please enter a valid phone number' : '',
   };
+
   const isValid = !errors.name && !errors.email && !errors.phone;
 
   const loadRazorpayScript = (): Promise<boolean> => {
@@ -61,7 +61,9 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
 
     setStatus('processing');
     setError('');
+
     try {
+      // 1. Keeps your full Supabase order creation logic intact
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-razorpay-order`;
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -92,8 +94,15 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
 
       setStatus('verifying');
 
+      // FALLBACK: Uses the key from Supabase if available, otherwise uses Render environment variables
+      const finalKeyId = keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+
+      if (!finalKeyId) {
+        throw new Error('Payment system is not yet configured. Please add your Razorpay keys in the project settings.');
+      }
+
       const options = {
-        key: keyId,
+        key: finalKeyId, 
         amount: amount,
         currency: currency,
         name: 'RezuMe',
@@ -112,6 +121,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
         },
         handler: async (response: any) => {
           try {
+            // 2. Keeps your full Supabase verification logic intact
             const verifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-razorpay-payment`;
             const verifyResp = await fetch(verifyUrl, {
               method: 'POST',
@@ -154,7 +164,10 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
         setError(resp.error?.description || 'Payment failed. Please try again.');
         setStatus('error');
       });
+      
+      // Ensures the window actually opens up
       rzp.open();
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed. Please try again.');
       setStatus('error');
@@ -165,8 +178,8 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden max-h-[90vh] flex flex-col">
-        <button
-          onClick={onClose}
+        <button 
+          onClick={onClose} 
           className="absolute top-4 right-4 p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors z-10"
         >
           <X className="w-5 h-5" />
@@ -183,24 +196,21 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
             {emailSent ? (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
                 <div className="flex items-center justify-center gap-2 text-emerald-700 font-semibold text-sm">
-                  <Check className="w-5 h-5" strokeWidth={2.5} />
-                  Email sent to {customer.email}
+                  <Check className="w-5 h-5" strokeWidth={2.5} /> Email sent to {customer.email}
                 </div>
                 <p className="text-xs text-emerald-600 mt-1.5">Check your inbox (and spam folder just in case).</p>
               </div>
             ) : (
               <div className="space-y-3">
-                <button
+                <button 
                   onClick={() => {
                     onClose();
                     setTimeout(() => window.print(), 300);
-                  }}
+                  }} 
                   className="w-full py-3.5 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Download className="w-5 h-5" />
-                  Download PDF Now
+                  <Download className="w-5 h-5" /> Download PDF Now
                 </button>
-
                 <div className="flex items-center gap-3 my-2">
                   <div className="flex-1 h-px bg-stone-200" />
                   <span className="text-xs text-stone-400 font-medium">OR</span>
@@ -213,11 +223,12 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                   </div>
                 )}
 
-                <button
+                <button 
                   onClick={async () => {
                     setEmailSending(true);
                     setEmailError('');
                     try {
+                      // 3. Keeps your Supabase email function intact
                       const emailUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-resume-email`;
                       const resp = await fetch(emailUrl, {
                         method: 'POST',
@@ -231,29 +242,29 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                           toName: customer.name,
                         }),
                       });
+
                       if (!resp.ok) {
                         const body = await resp.json().catch(() => ({}));
                         throw new Error(body.error || 'Failed to send email');
                       }
+
                       setEmailSent(true);
                     } catch (err) {
                       setEmailError(err instanceof Error ? err.message : 'Failed to send email. Please try downloading instead.');
                     } finally {
                       setEmailSending(false);
                     }
-                  }}
-                  disabled={emailSending}
+                  }} 
+                  disabled={emailSending} 
                   className="w-full py-3.5 bg-white text-stone-900 font-semibold rounded-xl border border-stone-300 hover:border-stone-400 hover:bg-stone-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {emailSending ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Sending email...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Sending email...
                     </>
                   ) : (
                     <>
-                      <Send className="w-5 h-5" />
-                      Email Resume to {customer.email}
+                      <Send className="w-5 h-5" /> Email Resume to {customer.email}
                     </>
                   )}
                 </button>
@@ -261,10 +272,7 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
             )}
 
             {!emailSent && (
-              <button
-                onClick={onClose}
-                className="mt-4 text-sm text-stone-400 hover:text-stone-600 transition-colors"
-              >
+              <button onClick={onClose} className="mt-4 text-sm text-stone-400 hover:text-stone-600 transition-colors">
                 Close
               </button>
             )}
@@ -286,62 +294,53 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                   <span className="text-2xl font-bold text-stone-900">₹1</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-stone-500">
-                  <Check className="w-3.5 h-3.5 text-emerald-500" strokeWidth={3} />
-                  Professional PDF export
-                  <Check className="w-3.5 h-3.5 text-emerald-500 ml-2" strokeWidth={3} />
-                  ATS-friendly format
+                  <Check className="w-3.5 h-3.5 text-emerald-500" strokeWidth={3} /> Professional PDF export
+                  <Check className="w-3.5 h-3.5 text-emerald-500 ml-2" strokeWidth={3} /> ATS-friendly format
                 </div>
               </div>
 
-              {/* Customer details form */}
               <div className="mb-5">
-                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">
-                  Your Details
-                </p>
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Your Details</p>
                 <div className="space-y-3">
                   <div>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                      <input
-                        className={inputClass}
-                        placeholder="Full Name"
-                        value={customer.name}
-                        onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+                      <input 
+                        className={inputClass} 
+                        placeholder="Full Name" 
+                        value={customer.name} 
+                        onChange={(e) => setCustomer({ ...customer, name: e.target.value })} 
                       />
                     </div>
-                    {touched && errors.name && (
-                      <p className="text-xs text-red-500 mt-1 ml-1">{errors.name}</p>
-                    )}
+                    {touched && errors.name && <p className="text-xs text-red-500 mt-1 ml-1">{errors.name}</p>}
                   </div>
+
                   <div>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                      <input
-                        className={inputClass}
-                        type="email"
-                        placeholder="Email Address"
-                        value={customer.email}
-                        onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+                      <input 
+                        className={inputClass} 
+                        type="email" 
+                        placeholder="Email Address" 
+                        value={customer.email} 
+                        onChange={(e) => setCustomer({ ...customer, email: e.target.value })} 
                       />
                     </div>
-                    {touched && errors.email && (
-                      <p className="text-xs text-red-500 mt-1 ml-1">{errors.email}</p>
-                    )}
+                    {touched && errors.email && <p className="text-xs text-red-500 mt-1 ml-1">{errors.email}</p>}
                   </div>
+
                   <div>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                      <input
-                        className={inputClass}
-                        type="tel"
-                        placeholder="Phone Number"
-                        value={customer.phone}
-                        onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+                      <input 
+                        className={inputClass} 
+                        type="tel" 
+                        placeholder="Phone Number" 
+                        value={customer.phone} 
+                        onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} 
                       />
                     </div>
-                    {touched && errors.phone && (
-                      <p className="text-xs text-red-500 mt-1 ml-1">{errors.phone}</p>
-                    )}
+                    {touched && errors.phone && <p className="text-xs text-red-500 mt-1 ml-1">{errors.phone}</p>}
                   </div>
                 </div>
               </div>
@@ -352,32 +351,28 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                 </div>
               )}
 
-              <button
-                onClick={handlePay}
-                disabled={status === 'processing' || status === 'verifying'}
+              <button 
+                onClick={handlePay} 
+                disabled={status === 'processing' || status === 'verifying'} 
                 className="w-full py-3.5 bg-stone-900 text-white font-semibold rounded-xl hover:bg-stone-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {status === 'processing' ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Creating order...
+                    <Loader2 className="w-5 h-5 animate-spin" /> Creating order...
                   </>
                 ) : status === 'verifying' ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Complete payment...
+                    <Loader2 className="w-5 h-5 animate-spin" /> Complete payment...
                   </>
                 ) : (
                   <>
-                    <CreditCard className="w-5 h-5" />
-                    Pay ₹1 & Download
+                    <CreditCard className="w-5 h-5" /> Pay ₹1 & Download
                   </>
                 )}
               </button>
 
               <div className="flex items-center justify-center gap-1.5 mt-4 text-xs text-stone-400">
-                <Shield className="w-3.5 h-3.5" />
-                Secured by Razorpay
+                <Shield className="w-3.5 h-3.5" /> Secured by Razorpay
                 <Lock className="w-3 h-3 ml-1" />
               </div>
             </div>
