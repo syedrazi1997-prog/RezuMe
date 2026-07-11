@@ -37,72 +37,33 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
   const handlePay = async () => {
     setStatus('processing');
     setError('');
+
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-razorpay-order`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ resumeId }),
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Payment service unavailable (${response.status})`);
-      }
-
-      const { orderId, amount, currency, keyId, alreadyPaid } = await response.json();
-
-      if (alreadyPaid) {
-        setStatus('success');
-        onPaid();
-        return;
-      }
-
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded || !window.Razorpay) {
         throw new Error('Failed to load Razorpay checkout. Please check your connection.');
       }
 
+      // Read the live/test key directly from your Render environment setup
+      const keyId = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      
+      if (!keyId) {
+        throw new Error('Payment system is not yet configured. Please add your Razorpay keys in the project settings.');
+      }
+
       setStatus('verifying');
 
+      // Configure Razorpay checkout options directly on the frontend
       const options = {
-        key: keyId,
-        amount: amount,
-        currency: currency,
+        key: keyId, 
+        amount: 100, // Amount in paise (100 paise = ₹1)
+        currency: 'INR',
         name: 'RezuMe',
         description: 'Resume PDF Download',
-        order_id: orderId,
         handler: async (response: any) => {
-          try {
-            const verifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-razorpay-payment`;
-            const verifyResp = await fetch(verifyUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: JSON.stringify({
-                resumeId,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              }),
-            });
-
-            if (!verifyResp.ok) {
-              const body = await verifyResp.json().catch(() => ({}));
-              throw new Error(body.error || 'Payment verification failed');
-            }
-
-            setStatus('success');
-            onPaid();
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Payment verification failed');
-            setStatus('error');
-          }
+          console.log("Payment successful:", response);
+          setStatus('success');
+          onPaid();
         },
         modal: {
           ondismiss: () => {
@@ -115,10 +76,12 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
       };
 
       const rzp = new window.Razorpay(options);
+      
       rzp.on('payment.failed', (resp: any) => {
         setError(resp.error?.description || 'Payment failed. Please try again.');
         setStatus('error');
       });
+
       rzp.open();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed. Please try again.');
@@ -130,8 +93,8 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-        <button
-          onClick={onClose}
+        <button 
+          onClick={onClose} 
           className="absolute top-4 right-4 p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors z-10"
         >
           <X className="w-5 h-5" />
@@ -144,15 +107,14 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
             </div>
             <h2 className="text-2xl font-bold text-stone-900 mb-2">Payment Successful!</h2>
             <p className="text-stone-600 mb-6">Your resume is now unlocked for download.</p>
-            <button
+            <button 
               onClick={() => {
                 onClose();
                 setTimeout(() => window.print(), 300);
-              }}
+              }} 
               className="px-6 py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors flex items-center gap-2 mx-auto"
             >
-              <Download className="w-5 h-5" />
-              Download PDF Now
+              <Download className="w-5 h-5" /> Download PDF Now
             </button>
           </div>
         ) : (
@@ -172,10 +134,8 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                   <span className="text-2xl font-bold text-stone-900">₹1</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-stone-500">
-                  <Check className="w-3.5 h-3.5 text-emerald-500" strokeWidth={3} />
-                  Professional PDF export
-                  <Check className="w-3.5 h-3.5 text-emerald-500 ml-2" strokeWidth={3} />
-                  ATS-friendly format
+                  <Check className="w-3.5 h-3.5 text-emerald-500" strokeWidth={3} /> Professional PDF export
+                  <Check className="w-3.5 h-3.5 text-emerald-500 ml-2" strokeWidth={3} /> ATS-friendly format
                 </div>
               </div>
 
@@ -185,32 +145,28 @@ export default function PaymentModal({ isOpen, onClose, resumeId, onPaid }: Paym
                 </div>
               )}
 
-              <button
-                onClick={handlePay}
-                disabled={status === 'processing' || status === 'verifying'}
+              <button 
+                onClick={handlePay} 
+                disabled={status === 'processing' || status === 'verifying'} 
                 className="w-full py-3.5 bg-stone-900 text-white font-semibold rounded-xl hover:bg-stone-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {status === 'processing' ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Creating order...
+                    <Loader2 className="w-5 h-5 animate-spin" /> Creating order...
                   </>
                 ) : status === 'verifying' ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Complete payment...
+                    <Loader2 className="w-5 h-5 animate-spin" /> Complete payment...
                   </>
                 ) : (
                   <>
-                    <CreditCard className="w-5 h-5" />
-                    Pay ₹1 & Download
+                    <CreditCard className="w-5 h-5" /> Pay ₹1 & Download
                   </>
                 )}
               </button>
 
               <div className="flex items-center justify-center gap-1.5 mt-4 text-xs text-stone-400">
-                <Shield className="w-3.5 h-3.5" />
-                Secured by Razorpay
+                <Shield className="w-3.5 h-3.5" /> Secured by Razorpay
                 <Lock className="w-3 h-3 ml-1" />
               </div>
             </div>
